@@ -55,24 +55,36 @@ def place_sell_order(context, sec, price, holding):
     holding.order_sell(num_to_sell, price)
 
 def cancel_open_buy_orders(sec, holding):
-    oos = get_open_orders(sec)
-    amount_canceled = 0
-    for order in oos:
-        if 0 < order.amount: #it is a buy order
-            print "cancel open buy order: " + str(order.amount) + " of " + str(sec) + " | filled: " + str(order.filled)
-            cancel_order(order)
-            amount_canceled += order.amount - order.filled
+    amount_canceled = get_open_buy_order_amount(sec, True)
     holding.cancel_open_buy_order_and_update(amount_canceled)
 
 def cancel_open_sell_orders(sec, holding):
+    amount_canceled = get_open_sell_order_amount(sec, True)
+    holding.cancel_open_sell_order_and_update(amount_canceled)
+
+def get_open_buy_order_amount(sec, cancel):
+    amount_open = 0
     oos = get_open_orders(sec)
-    amount_canceled = 0
+    for order in oos:
+        if 0 < order.amount: #it is a buy order
+            print "STATUS: open buy order: " + str(order.amount) + " of " + str(sec) + " | filled: " + str(order.filled)
+            if cancel:
+                print "ACTION: CANCEL"
+                cancel_order(order)
+            amount_open += order.amount - order.filled
+    return amount_open
+
+def get_open_sell_order_amount(sec, cancel):
+    amount_open = 0
+    oos = get_open_orders(sec)
     for order in oos:
         if 0 > order.amount: #it is a sell order
-            print "cancel open sell order: " + str(order.amount) + " of " + str(sec) + " | filled: " + str(order.filled)
-            cancel_order(order)
-            amount_canceled -= order.amount - order.filled
-    holding.cancel_open_sell_order_and_update(amount_canceled)
+            print "STATUS: open sell order: " + str(order.amount) + " of " + str(sec) + " | filled: " + str(order.filled)
+            if cancel:
+                print "ACTION: CANCEL"
+                cancel_order(order)
+            amount_open -= order.amount - order.filled
+    return amount_open
 """ END Methods placing orders and altering holding status. """
 
 """ Utilities confirming stop lines with a price. """
@@ -120,6 +132,8 @@ def buy_rebalance(context, data):
 
         if holding.open_buy_order_price <> 0 and holding.open_buy_order_price <> buy_price:
             cancel_open_buy_orders(sec, holding)
+        if holding.open_buy_order_number <> 0 and get_open_buy_order_amount(sec, False) == 0:
+            cancel_open_buy_orders(sec, holding)
         if buy_price <> None:
             place_buy_order(sec, buy_price, holding)
 
@@ -146,12 +160,12 @@ def sell_rebalance(context, data):
 
         if holding.open_sell_order_price <> 0 and holding.open_sell_order_price <> sell_price:
             cancel_open_sell_orders(sec, holding)
+        if holding.open_sell_order_number <> 0 and get_open_sell_order_amount(sec, False) == 0:
+            cancel_open_sell_orders(sec, holding)
         if sell_price <> None:
             place_sell_order(context, sec, sell_price, holding)
 
-        if holding.num_stocks == 0 and holding.open_sell_order_number == 0 and context.portfolio.positions[sec].amount == 0:
-            if holding.open_buy_order_number <> 0:
-                cancel_open_buy_orders(sec, holding)
+        if holding.num_stocks == 0 and holding.open_sell_order_number == 0 and holding.open_buy_order_number == 0:
             context.cash_today += holding.cash
             del context.cur_holdings[sec]
 
