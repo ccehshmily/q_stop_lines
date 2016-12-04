@@ -98,11 +98,18 @@ def buy_rebalance(context, data):
     if context.already_stopped:
         return
 
-    for sec in context.security:
-        if sec not in context.cur_holdings:
-            # TODO: context.max_portfolio_size will need to be changed to its own portion
-            # TODO: clear holding when sec is all sold
-            context.cur_holdings[sec] = Holding(sec, context.max_portfolio_size)
+    for i in range(len(context.security)):
+        num_to_hold = context.max_position_num - len(context.cur_holdings)
+        if num_to_hold == 0:
+            break
+        sec = context.today_candidate.next()
+        if sec in context.cur_holdings:
+            continue
+        holding_cash = context.cash_today / num_to_hold
+        context.cur_holdings[sec] = Holding(sec, holding_cash)
+        context.cash_today -= holding_cash
+
+    for sec in context.cur_holdings:
         holding = context.cur_holdings[sec]
         cur_price = float(data.current([sec], 'price'))
         my_cost = context.MAX_NUMBER
@@ -121,8 +128,9 @@ def sell_rebalance(context, data):
         return
 
     for sec in context.security:
-        if sec not in context.cur_holdings:
-            return
+        if not sec in context.cur_holdings:
+            continue
+
         holding = context.cur_holdings[sec]
         cur_price = float(data.current([sec], 'price'))
         my_cost = None
@@ -140,6 +148,12 @@ def sell_rebalance(context, data):
             cancel_open_sell_orders(sec, holding)
         if sell_price <> None:
             place_sell_order(context, sec, sell_price, holding)
+
+        if holding.num_stocks == 0 and holding.open_sell_order_number == 0 and context.portfolio.positions[sec].amount == 0:
+            if holding.open_buy_order_number <> 0:
+                cancel_open_buy_orders(sec, holding)
+            context.cash_today += holding.cash
+            del context.cur_holdings[sec]
 
 def clear_positions(context, data):
     context.already_stopped = True
@@ -233,7 +247,7 @@ def initialize(context):
 
     # Portfolio settings
     context.max_portfolio_size = 10000
-    context.max_position_num = 5
+    context.max_position_num = 2
 
     # Trading params
     context.min_max_window = 10
@@ -271,7 +285,9 @@ def before_trading_start(context, data):
     Called every day before market open.
     """
     # These are the securities that we are interested in trading each day.
-    context.security = [symbol('PLUG')]
+    context.security = [symbol('PLUG'), symbol('VXX'), symbol('XIV')]
+    from itertools import cycle
+    context.today_candidate = cycle(context.security)
 
     # Initialize data related to stop lines
     context.stop_lines_up = {}
@@ -285,6 +301,7 @@ def before_trading_start(context, data):
     context.cur_minute = 0
     context.cur_holdings = {}
     context.already_stopped = False
+    context.cash_today = context.max_portfolio_size
 
 def handle_data(context, data):
     """
