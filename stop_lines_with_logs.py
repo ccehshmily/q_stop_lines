@@ -40,6 +40,9 @@ def initialize(context):
     """
     Called once at the start of the algorithm.
     """
+
+    context.MAX_NUMBER = 10000000
+
     set_commission(commission.PerTrade(cost=0.00))
     set_slippage(slippage.FixedSlippage(spread=0.00))
     set_long_only()
@@ -58,13 +61,13 @@ def initialize(context):
         TradingDayMinutes,
         EveryThisManyMinutes
     ):
-        schedule_function(my_buy_rebalance, date_rules.every_day(), time_rules.market_open(minutes=minutez))
+        schedule_function(buy_rebalance, date_rules.every_day(), time_rules.market_open(minutes=minutez))
     for minutez in xrange(
         context.cool_out_time * 3 + 2,
         TradingDayMinutes + 2,
         EveryThisManyMinutes
     ):
-        schedule_function(my_sell_rebalance, date_rules.every_day(), time_rules.market_open(minutes=minutez))
+        schedule_function(sell_rebalance, date_rules.every_day(), time_rules.market_open(minutes=minutez))
     schedule_function(clear_positions, date_rules.every_day(), time_rules.market_close(hours=0, minutes=23))
 
 def before_trading_start(context, data):
@@ -72,7 +75,7 @@ def before_trading_start(context, data):
     Called every day before market open.
     """
     # These are the securities that we are interested in trading each day.
-    context.security = symbol('JNUG')
+    context.security = symbol('PLUG')
 
     context.stop_lines_up = {}
     context.stop_lines_down = {}
@@ -86,7 +89,23 @@ def before_trading_start(context, data):
 
     context.already_stopped = False
 
-def my_buy_rebalance(context, data):
+def getBuyLineBelowPrice(context, price):
+    buy_price = None
+    if len(context.ordered_down_lines_confidence) > 0:
+        for (price_line, confidence) in context.ordered_down_lines_confidence:
+            if confidence >= context.confidence_bar_down and price_line < price:
+                buy_price = price_line
+    return buy_price
+
+def getSellLineAbovePrice(context, price):
+    sell_price = None
+    if len(context.ordered_up_lines_confidence) > 0:
+        for (price_line, confidence) in context.ordered_up_lines_confidence:
+            if confidence >= context.confidence_bar_up and price_line > price:
+                sell_price = price_line
+    return sell_price
+
+def buy_rebalance(context, data):
     if context.already_stopped:
         return
 
@@ -95,36 +114,40 @@ def my_buy_rebalance(context, data):
         context.cur_holdings[sec] = Holding(sec, context.max_portfolio_size)
     holding = context.cur_holdings[sec]
     cur_price = float(data.current([sec], 'price'))
-    buy_price = 1000000
-    my_cost = 1000000
+    my_cost = context.MAX_NUMBER
     if sec in context.portfolio.positions:
         my_cost = float(context.portfolio.positions[sec].cost_basis)
-    if len(context.ordered_down_lines_confidence) > 0:
-        for (price, confidence) in context.ordered_down_lines_confidence:
-            if confidence >= context.confidence_bar_down and price < cur_price and price < my_cost:
-                buy_price = price
+
+    buy_price = getBuyLineBelowPrice(context, min(cur_price, my_cost))
 
     if holding.open_buy_order_price <> 0 and holding.open_buy_order_price <> buy_price:
         cancel_open_buy_orders(sec, holding)
-    if buy_price <> 1000000:
+    if buy_price <> None:
         place_buy_order(sec, buy_price, holding)
 
-def my_sell_rebalance(context, data):
+def sell_rebalance(context, data):
+    if context.already_stopped:
+        return
+
     sec = context.security
     if sec not in context.cur_holdings:
         return
     holding = context.cur_holdings[sec]
     cur_price = float(data.current([sec], 'price'))
-    sell_price = 0
+    my_cost = None
+    if sec in context.portfolio.positions:
+        my_cost = float(context.portfolio.positions[sec].cost_basis)
 
-    if len(context.ordered_up_lines_confidence) > 0:
-        for (price, confidence) in context.ordered_up_lines_confidence:
-            if confidence >= context.confidence_bar_up and price > cur_price:
-                sell_price = price
+    sell_price = getSellLineAbovePrice(context, cur_price)
+
+    if my_cost <> None and cur_price < my_cost:
+        possible_buy_price = getBuyLineBelowPrice(context, cur_price)
+        if possible_buy_price == None:
+            sell_price = cur_price
 
     if holding.open_sell_order_price <> 0 and holding.open_sell_order_price <> sell_price:
         cancel_open_sell_orders(sec, holding)
-    if sell_price <> 0:
+    if sell_price <> None:
         place_sell_order(context, sec, sell_price, holding)
 
 def place_buy_order(sec, price, holding):
@@ -149,7 +172,7 @@ def cancel_open_buy_orders(sec, holding):
         if 0 < order.amount: #it is a buy order
             print "cancel open buy order: " + str(order.amount) + " of " + str(sec) + " | filled: " + str(order.filled)
             cancel_order(order)
-            amount_canceled += order.amount
+            amount_canceled += order.amount - order.filled
     holding.cancel_open_buy_order_and_update(amount_canceled)
 
 def cancel_open_sell_orders(sec, holding):
@@ -159,7 +182,7 @@ def cancel_open_sell_orders(sec, holding):
         if 0 > order.amount: #it is a sell order
             print "cancel open sell order: " + str(order.amount) + " of " + str(sec) + " | filled: " + str(order.filled)
             cancel_order(order)
-            amount_canceled -= order.amount
+            amount_canceled -= order.amount - order.filled
     holding.cancel_open_sell_order_and_update(amount_canceled)
 
 def clear_positions(context, data):
