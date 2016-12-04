@@ -12,25 +12,25 @@ class Holding:
         self.open_sell_order_number = 0
 
     def order_buy(self, number, price):
-        print "holding change: buy " + str(number) + " of " + self.security + " at " + str(price)
+        print "holding change: buy " + str(number) + " of " + str(self.security) + " at " + str(price)
         self.cash -= number * price
         self.open_buy_order_price = price
         self.open_buy_order_number = number
 
     def cancel_open_buy_order_and_update(self, number_canceled):
-        print "holding change: cancel buy " + str(number_canceled) + " of " + self.security
+        print "holding change: cancel buy " + str(number_canceled) + " of " + str(self.security)
         self.cash += number_canceled * self.open_buy_order_price
         self.num_stocks += self.open_buy_order_number - number_canceled
         self.open_buy_order_price = 0
         self.open_buy_order_number = 0
 
     def order_sell(self, number, price):
-        print "holding change: sell " + str(number) + " of " + self.security + " at " + str(price)
+        print "holding change: sell " + str(number) + " of " + str(self.security) + " at " + str(price)
         self.open_sell_order_price = price
         self.open_sell_order_number = number
 
     def cancel_open_sell_order_and_update(self, number_canceled):
-        print "holding change: cancel sell " + str(number_canceled) + " of " + self.security
+        print "holding change: cancel sell " + str(number_canceled) + " of " + str(self.security)
         self.cash += (self.open_sell_order_number - number_canceled) * self.open_sell_order_price
         self.num_stocks -= self.open_sell_order_number - number_canceled
         self.open_sell_order_price = 0
@@ -143,14 +143,13 @@ def place_sell_order(context, sec, price, holding):
     holding.order_sell(num_to_sell, price)
 
 def cancel_open_buy_orders(sec, holding):
-    oo = get_open_orders()
+    oos = get_open_orders(sec)
     amount_canceled = 0
-    if sec in oo:
-        orders = oo[sec]
-        for order in orders:
-            if 0 < order.amount: #it is a buy order
-                cancel_order(order)
-                amount_canceled += order.amount
+    for order in oos:
+        if 0 < order.amount: #it is a buy order
+            print "cancel open buy order: " + str(order.amount) + " of " + str(sec) + " | filled: " + str(order.filled)
+            cancel_order(order)
+            amount_canceled += order.amount
     holding.cancel_open_buy_order_and_update(amount_canceled)
 
 def cancel_open_sell_orders(sec, holding):
@@ -158,6 +157,7 @@ def cancel_open_sell_orders(sec, holding):
     amount_canceled = 0
     for order in oos:
         if 0 > order.amount: #it is a sell order
+            print "cancel open sell order: " + str(order.amount) + " of " + str(sec) + " | filled: " + str(order.filled)
             cancel_order(order)
             amount_canceled -= order.amount
     holding.cancel_open_sell_order_and_update(amount_canceled)
@@ -166,11 +166,10 @@ def clear_positions(context, data):
     context.already_stopped = True
 
     oo = get_open_orders()
-    if len(oo) == 0:
-        return
-    for stock, orders in oo.iteritems():
-        for order in orders:
-            cancel_order(order)
+    if len(oo) <> 0:
+        for stock, orders in oo.iteritems():
+            for order in orders:
+                cancel_order(order)
 
     for sec in context.portfolio.positions:
         order_target(sec, 0)
