@@ -1,6 +1,7 @@
 from collections import OrderedDict
 import math
 
+""" Class for recording the holding status of a security. """
 class Holding:
     def __init__(self, security, cash):
         self.security = security
@@ -35,60 +36,46 @@ class Holding:
         self.num_stocks -= self.open_sell_order_number - number_canceled
         self.open_sell_order_price = 0
         self.open_sell_order_number = 0
+""" END Class for recording the holding status of a security. """
 
-def initialize(context):
-    """
-    Called once at the start of the algorithm.
-    """
+""" Methods placing orders and altering holding status. """
+def place_buy_order(sec, price, holding):
+    cash_available = holding.cash
+    num_to_order = int(cash_available / price)
+    if num_to_order <= 0:
+        return
+    order(sec, num_to_order, style=LimitOrder(price))
+    holding.order_buy(num_to_order, price)
 
-    context.MAX_NUMBER = 10000000
+def place_sell_order(context, sec, price, holding):
+    num_to_sell = context.portfolio.positions[sec].amount - holding.open_sell_order_number
+    if num_to_sell <= 0:
+        return
+    order(sec, 0 - num_to_sell, style=LimitOrder(price))
+    holding.order_sell(num_to_sell, price)
 
-    set_commission(commission.PerTrade(cost=0.00))
-    set_slippage(slippage.FixedSlippage(spread=0.00))
-    set_long_only()
+def cancel_open_buy_orders(sec, holding):
+    oos = get_open_orders(sec)
+    amount_canceled = 0
+    for order in oos:
+        if 0 < order.amount: #it is a buy order
+            print "cancel open buy order: " + str(order.amount) + " of " + str(sec) + " | filled: " + str(order.filled)
+            cancel_order(order)
+            amount_canceled += order.amount - order.filled
+    holding.cancel_open_buy_order_and_update(amount_canceled)
 
-    context.max_portfolio_size = 10000
+def cancel_open_sell_orders(sec, holding):
+    oos = get_open_orders(sec)
+    amount_canceled = 0
+    for order in oos:
+        if 0 > order.amount: #it is a sell order
+            print "cancel open sell order: " + str(order.amount) + " of " + str(sec) + " | filled: " + str(order.filled)
+            cancel_order(order)
+            amount_canceled -= order.amount - order.filled
+    holding.cancel_open_sell_order_and_update(amount_canceled)
+""" END Methods placing orders and altering holding status. """
 
-    context.min_max_window = 10
-    context.cool_out_time = 20
-    context.max_confidence_proportion = 0.25
-
-    EveryThisManyMinutes = 3
-    TradingDayHours = 5
-    TradingDayMinutes=int((TradingDayHours * 60) - (EveryThisManyMinutes * 2))
-    for minutez in xrange(
-        context.cool_out_time * 3,
-        TradingDayMinutes,
-        EveryThisManyMinutes
-    ):
-        schedule_function(buy_rebalance, date_rules.every_day(), time_rules.market_open(minutes=minutez))
-    for minutez in xrange(
-        context.cool_out_time * 3 + 2,
-        TradingDayMinutes + 2,
-        EveryThisManyMinutes
-    ):
-        schedule_function(sell_rebalance, date_rules.every_day(), time_rules.market_open(minutes=minutez))
-    schedule_function(clear_positions, date_rules.every_day(), time_rules.market_close(hours=0, minutes=23))
-
-def before_trading_start(context, data):
-    """
-    Called every day before market open.
-    """
-    # These are the securities that we are interested in trading each day.
-    context.security = symbol('PLUG')
-
-    context.stop_lines_up = {}
-    context.stop_lines_down = {}
-    context.ordered_up_lines_confidence = []
-    context.ordered_down_lines_confidence = []
-    context.confidence_bar_up = 0.0
-    context.confidence_bar_down = 0.0
-    context.cur_minute = 0
-
-    context.cur_holdings = {}
-
-    context.already_stopped = False
-
+""" Utilities confirming stop lines with a price. """
 def getBuyLineBelowPrice(context, price):
     buy_price = None
     if len(context.ordered_down_lines_confidence) > 0:
@@ -104,7 +91,9 @@ def getSellLineAbovePrice(context, price):
             if confidence >= context.confidence_bar_up and price_line > price:
                 sell_price = price_line
     return sell_price
+""" END Utilities confirming stop lines with a price. """
 
+""" Methods dealing with positions, buying and selling according to data. """
 def buy_rebalance(context, data):
     if context.already_stopped:
         return
@@ -150,41 +139,6 @@ def sell_rebalance(context, data):
     if sell_price <> None:
         place_sell_order(context, sec, sell_price, holding)
 
-def place_buy_order(sec, price, holding):
-    cash_available = holding.cash
-    num_to_order = int(cash_available / price)
-    if num_to_order <= 0:
-        return
-    order(sec, num_to_order, style=LimitOrder(price))
-    holding.order_buy(num_to_order, price)
-
-def place_sell_order(context, sec, price, holding):
-    num_to_sell = context.portfolio.positions[sec].amount - holding.open_sell_order_number
-    if num_to_sell <= 0:
-        return
-    order(sec, 0 - num_to_sell, style=LimitOrder(price))
-    holding.order_sell(num_to_sell, price)
-
-def cancel_open_buy_orders(sec, holding):
-    oos = get_open_orders(sec)
-    amount_canceled = 0
-    for order in oos:
-        if 0 < order.amount: #it is a buy order
-            print "cancel open buy order: " + str(order.amount) + " of " + str(sec) + " | filled: " + str(order.filled)
-            cancel_order(order)
-            amount_canceled += order.amount - order.filled
-    holding.cancel_open_buy_order_and_update(amount_canceled)
-
-def cancel_open_sell_orders(sec, holding):
-    oos = get_open_orders(sec)
-    amount_canceled = 0
-    for order in oos:
-        if 0 > order.amount: #it is a sell order
-            print "cancel open sell order: " + str(order.amount) + " of " + str(sec) + " | filled: " + str(order.filled)
-            cancel_order(order)
-            amount_canceled -= order.amount - order.filled
-    holding.cancel_open_sell_order_and_update(amount_canceled)
-
 def clear_positions(context, data):
     context.already_stopped = True
 
@@ -196,7 +150,9 @@ def clear_positions(context, data):
 
     for sec in context.portfolio.positions:
         order_target(sec, 0)
+""" END Methods dealing with positions, buying and selling according to data. """
 
+""" Update stop lines. """
 def handle_data(context, data):
     """
     Called every minute.
@@ -242,7 +198,7 @@ def handle_data(context, data):
     else:
         context.confidence_bar_down = 1000000
 
-    """
+    """ Could be used to print stop lines for debugging.
     print "=== Up Stop Lines ==="
     for (price, confidence) in ordered_up_lines_confidence:
         if confidence >= confidence_bar_up:
@@ -252,3 +208,58 @@ def handle_data(context, data):
         if confidence >= confidence_bar_down:
             print (price, confidence)
     """
+""" END Update stop lines. """
+
+""" Implementing built in interfaces, initializing at the start of the algo and everyday. """
+def initialize(context):
+    """
+    Called once at the start of the algorithm.
+    """
+    context.MAX_NUMBER = 10000000
+
+    set_commission(commission.PerTrade(cost=0.00))
+    set_slippage(slippage.FixedSlippage(spread=0.00))
+    set_long_only()
+
+    context.max_portfolio_size = 10000
+
+    context.min_max_window = 10
+    context.cool_out_time = 20
+    context.max_confidence_proportion = 0.25
+
+    trading_interval_minutes = 3
+    trading_hours_total = 5
+    trading_minutes_total=int((trading_hours_total * 60) - (trading_interval_minutes * 2))
+    for minutez in xrange(
+        context.cool_out_time * 3,
+        trading_minutes_total,
+        trading_interval_minutes
+    ):
+        schedule_function(buy_rebalance, date_rules.every_day(), time_rules.market_open(minutes=minutez))
+    for minutez in xrange(
+        context.cool_out_time * 3 + 2,
+        trading_minutes_total + 2,
+        trading_interval_minutes
+    ):
+        schedule_function(sell_rebalance, date_rules.every_day(), time_rules.market_open(minutes=minutez))
+    schedule_function(clear_positions, date_rules.every_day(), time_rules.market_close(hours=0, minutes=23))
+
+def before_trading_start(context, data):
+    """
+    Called every day before market open.
+    """
+    # These are the securities that we are interested in trading each day.
+    context.security = symbol('PLUG')
+
+    context.stop_lines_up = {}
+    context.stop_lines_down = {}
+    context.ordered_up_lines_confidence = []
+    context.ordered_down_lines_confidence = []
+    context.confidence_bar_up = 0.0
+    context.confidence_bar_down = 0.0
+    context.cur_minute = 0
+
+    context.cur_holdings = {}
+
+    context.already_stopped = False
+""" END Implementing built in interfaces, initializing at the start of the algo and everyday. """
