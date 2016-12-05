@@ -177,14 +177,10 @@ def sell_rebalance(context, data):
 
 def clear_positions(context, data):
     context.already_stopped = True
-
-    oo = get_open_orders()
-    if len(oo) <> 0:
-        for stock, orders in oo.iteritems():
-            for order in orders:
-                cancel_order(order)
-
-    for sec in context.portfolio.positions:
+    for sec in context.security:
+        oos = get_open_orders(sec)
+        for order in oos:
+            cancel_order(order)
         order_target(sec, 0)
 """ END Methods dealing with positions, buying and selling according to data. """
 
@@ -356,6 +352,30 @@ def initialize(context):
     # Constants
     context.MAX_NUMBER = 10000000
     context.DAILY_CANDIDATE_NUMBER = 10
+    context.UNTOUCHABLE_STOCKS = [
+        symbol('GDX'),
+        symbol('GDXJ'),
+        symbol('SLV'),
+        symbol('JNUG'),
+        symbol('CNY'),
+        symbol('GOOG'),
+        symbol('NQ'),
+        symbol('SGG'),
+        symbol('JO'),
+        symbol('GSG'),
+        symbol('UVXY'),
+        symbol('CXW'),
+        symbol('UCO'),
+        symbol('SDS'),
+        symbol('KGC'),
+        symbol('WMCR'),
+        symbol('SPY'),
+        symbol('CXW'),
+        symbol('JPM'),
+        symbol('FB'),
+        symbol('CHAD'),
+        symbol('UDN')
+    ]
 
     # Program settings
     set_commission(commission.PerTrade(cost=0.00))
@@ -367,7 +387,7 @@ def initialize(context):
     attach_pipeline(pipeline, 'pipeline_filter_candidates')
 
     # Portfolio settings
-    context.max_portfolio_size = 10000
+    context.max_portfolio_size = 2000
     context.max_position_num = 5
 
     # Trading params
@@ -408,7 +428,11 @@ def before_trading_start(context, data):
     # Prepare daily security candidates
     context.output = pipeline_output('pipeline_filter_candidates')
     context.security = context.output[context.output['stocks_worst']].index.tolist()
+    for sec in context.UNTOUCHABLE_STOCKS:
+        if sec in context.security:
+            context.security.remove(sec)
     log.info("Today's number of candidates: %s" % (len(context.security)))
+
     from itertools import cycle
     context.today_candidate = cycle(context.security)
 
