@@ -25,7 +25,6 @@ class Holding:
         self.open_buy_order_number = number
 
     def cancel_open_buy_order_and_update(self, number_canceled):
-        print "holding change: cancel buy " + str(number_canceled) + " of " + str(self.security)
         self.cash += number_canceled * self.open_buy_order_price
         self.num_stocks += self.open_buy_order_number - number_canceled
         self.open_buy_order_price = 0
@@ -37,7 +36,6 @@ class Holding:
         self.open_sell_order_number = number
 
     def cancel_open_sell_order_and_update(self, number_canceled):
-        print "holding change: cancel sell " + str(number_canceled) + " of " + str(self.security)
         self.cash += (self.open_sell_order_number - number_canceled) * self.open_sell_order_price
         self.num_stocks -= self.open_sell_order_number - number_canceled
         self.open_sell_order_price = 0
@@ -176,12 +174,24 @@ def sell_rebalance(context, data):
             del context.cur_holdings[sec]
 
 def clear_positions(context, data):
-    context.already_stopped = True
+    print "ACTION: CLEAR POSITIONS"
     for sec in context.security:
+        if sec in context.cur_holdings:
+            holding = context.cur_holdings[sec]
+            cancel_open_buy_orders(sec, holding)
+            cancel_open_sell_orders(sec, holding)
+            context.cash_today += holding.cash
+        # Just to assure that all open orders are canceled
         oos = get_open_orders(sec)
         for order in oos:
             cancel_order(order)
+    print "PORTFOLIO: day end CASH: " + str(context.cash_today)
+    for sec in context.security:
+        if sec in context.portfolio.positions:
+            amount = context.portfolio.positions[sec].amount
+            print "PORTFOLIO: day end SECURITY: " + str(sec) + " AMOUNT: " + str(amount)
         order_target(sec, 0)
+    context.already_stopped = True
 """ END Methods dealing with positions, buying and selling according to data. """
 
 """ Update stop lines. """
