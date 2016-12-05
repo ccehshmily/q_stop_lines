@@ -1,4 +1,10 @@
 from collections import OrderedDict
+from quantopian.pipeline import Pipeline
+from quantopian.algorithm import attach_pipeline, pipeline_output
+from quantopian.pipeline.data.builtin import USEquityPricing
+from quantopian.pipeline.data import morningstar
+from quantopian.pipeline.factors import SimpleMovingAverage, AverageDollarVolume
+from quantopian.pipeline.filters.morningstar import IsPrimaryShare
 import math
 
 """ Class for recording the holding status of a security. """
@@ -246,6 +252,102 @@ def calculate_stop_lines(context, data):
     """
 """ END Update stop lines. """
 
+""" Pipeline getting security candidates everyday. """
+def pipeline_filter_candidates(context):
+    """
+    Create our pipeline.
+    """
+    #Constants
+    lowest_volume_percent = 75
+    highest_volume_percent = 100
+    lowest_price = 1.05
+    highest_price = 2.50
+
+    # Filter for primary share equities. IsPrimaryShare is a built-in filter.
+    primary_share = IsPrimaryShare()
+
+    # Equities listed as common stock (as opposed to, say, preferred stock).
+    # 'ST00000001' indicates common stock.
+    common_stock = morningstar.share_class_reference.security_type.latest.eq('ST00000001')
+
+    # Non-depositary receipts. Recall that the ~ operator inverts filters,
+    # turning Trues into Falses and vice versa
+    not_depositary = ~morningstar.share_class_reference.is_depositary_receipt.latest
+
+    # Equities not trading over-the-counter.
+    not_otc = ~morningstar.share_class_reference.exchange_id.latest.startswith('OTC')
+
+    # Not when-issued equities.
+    not_wi = ~morningstar.share_class_reference.symbol.latest.endswith('.WI')
+
+    # Equities without LP in their name, .matches does a match using a regular
+    # expression
+    not_lp_name = ~morningstar.company_reference.standard_name.latest.matches('.* L[. ]?P.?$')
+
+    # Equities with a null value in the limited_partnership Morningstar
+    # fundamental field.
+    not_lp_balance_sheet = morningstar.balance_sheet.limited_partnership.latest.isnull()
+
+    # Equities whose most recent Morningstar market cap is not null have
+    # fundamental data and therefore are not ETFs.
+    have_market_cap = morningstar.valuation.market_cap.latest.notnull()
+
+    # At least a certain price
+    price = USEquityPricing.close.latest
+    AtLeastPrice   = (price >= lowest_price)
+    AtMostPrice    = (price <= highest_price)
+
+    # Filter for stocks that pass all of our previous filters.
+    tradeable_stocks = (
+        primary_share
+        & common_stock
+        & not_depositary
+        & not_otc
+        & not_wi
+        & not_lp_name
+        & not_lp_balance_sheet
+        & have_market_cap
+        & AtLeastPrice
+        & AtMostPrice
+    )
+
+    log.info('\nAlgorithm initialized variables:\n context.DAILY_CANDIDATE_NUMBER %s \n LowVar %s \n HighVar %s'
+        % (context.DAILY_CANDIDATE_NUMBER, lowest_volume_percent, highest_volume_percent)
+    )
+
+    # High dollar volume filter.
+    base_universe = AverageDollarVolume(
+        window_length=20,
+        mask=tradeable_stocks
+    ).percentile_between(lowest_volume_percent, highest_volume_percent)
+
+    # Short close price average.
+    ShortAvg = SimpleMovingAverage(
+        inputs=[USEquityPricing.close],
+        window_length=3,
+        mask=base_universe
+    )
+
+    # Long close price average.
+    LongAvg = SimpleMovingAverage(
+        inputs=[USEquityPricing.close],
+        window_length=45,
+        mask=base_universe
+    )
+
+    percent_difference = (ShortAvg - LongAvg) / LongAvg
+
+    stocks_worst = percent_difference.bottom(context.DAILY_CANDIDATE_NUMBER)
+    securities_to_trade = (stocks_worst)
+
+    return Pipeline(
+        columns={
+            'stocks_worst': stocks_worst
+        },
+        screen=(securities_to_trade),
+    )
+""" END Pipeline getting security candidates everyday. """
+
 """ Implementing built in interfaces, initializing at the start of the algo and everyday. """
 def initialize(context):
     """
@@ -253,15 +355,20 @@ def initialize(context):
     """
     # Constants
     context.MAX_NUMBER = 10000000
+    context.DAILY_CANDIDATE_NUMBER = 10
 
     # Program settings
     set_commission(commission.PerTrade(cost=0.00))
     set_slippage(slippage.FixedSlippage(spread=0.00))
     set_long_only()
 
+    # Pipeline settings
+    pipeline = pipeline_filter_candidates(context)
+    attach_pipeline(pipeline, 'pipeline_filter_candidates')
+
     # Portfolio settings
     context.max_portfolio_size = 10000
-    context.max_position_num = 2
+    context.max_position_num = 5
 
     # Trading params
     context.min_max_window = 10
@@ -298,8 +405,10 @@ def before_trading_start(context, data):
     """
     Called every day before market open.
     """
-    # These are the securities that we are interested in trading each day.
-    context.security = [symbol('PLUG'), symbol('VXX'), symbol('XIV')]
+    # Prepare daily security candidates
+    context.output = pipeline_output('pipeline_filter_candidates')
+    context.security = context.output[context.output['stocks_worst']].index.tolist()
+    log.info("Today's number of candidates: %s" % (len(context.security)))
     from itertools import cycle
     context.today_candidate = cycle(context.security)
 
