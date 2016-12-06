@@ -393,7 +393,9 @@ def initialize(context):
         symbol('JPM'),
         symbol('FB'),
         symbol('CHAD'),
-        symbol('UDN')
+        symbol('UDN'),
+        symbol('GAB'),
+        symbol('GARS')
     ]
 
     # Program settings
