@@ -150,10 +150,10 @@ def sell_rebalance(context, data):
             continue
 
         holding = context.cur_holdings[sec]
-        cur_price = float(data.current([sec], 'price'))
+        cur_price = round(float(data.current([sec], 'price')), 2)
         my_cost = None
         if sec in context.portfolio.positions:
-            my_cost = float(context.portfolio.positions[sec].cost_basis)
+            my_cost = round(float(context.portfolio.positions[sec].cost_basis), 2)
 
         sell_price = getSellLineAbovePrice(context, sec, cur_price)
 
@@ -162,7 +162,11 @@ def sell_rebalance(context, data):
             if possible_buy_price == None:
                 sell_price = cur_price
 
-        if holding.open_sell_order_price <> 0 and holding.open_sell_order_price <> sell_price:
+        if sell_price == None and cur_price > my_cost:
+            # This could be more strategic, but for now, we just sell at the current price to maintain profit
+            sell_price = cur_price
+
+        if holding.open_sell_order_price <> 0 and holding.open_sell_order_price <> sell_price and sell_price <> None:
             cancel_open_sell_orders(sec, holding)
         if holding.open_sell_order_number <> 0 and get_open_sell_order_amount(sec, False) == 0:
             cancel_open_sell_orders(sec, holding)
@@ -264,10 +268,10 @@ def pipeline_filter_candidates(context):
     Create our pipeline.
     """
     #Constants
-    lowest_volume_percent = 75
+    lowest_volume_percent = 80
     highest_volume_percent = 100
     lowest_price = 1.05
-    highest_price = 2.50
+    highest_price = 2.20
 
     # Filter for primary share equities. IsPrimaryShare is a built-in filter.
     primary_share = IsPrimaryShare()
@@ -361,7 +365,7 @@ def initialize(context):
     """
     # Constants
     context.MAX_NUMBER = 10000000
-    context.DAILY_CANDIDATE_NUMBER = 10
+    context.DAILY_CANDIDATE_NUMBER = 15
     context.UNTOUCHABLE_STOCKS = [
         symbol('GDX'),
         symbol('GDXJ'),
@@ -399,7 +403,7 @@ def initialize(context):
 
     # Portfolio settings
     context.max_portfolio_size = 2000
-    context.max_position_num = 5
+    context.max_position_num = 10
 
     # Trading params
     context.min_max_window = 10
