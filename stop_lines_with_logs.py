@@ -22,7 +22,7 @@ class Holding:
         print "holding change: buy " + str(number) + " of " + str(self.security) + " at " + str(price)
         self.cash -= number * price
         self.open_buy_order_price = price
-        self.open_buy_order_number = number
+        self.open_buy_order_number += number
 
     def cancel_open_buy_order_and_update(self, number_canceled):
         self.cash += number_canceled * self.open_buy_order_price
@@ -33,7 +33,7 @@ class Holding:
     def order_sell(self, number, price):
         print "holding change: sell " + str(number) + " of " + str(self.security) + " at " + str(price)
         self.open_sell_order_price = price
-        self.open_sell_order_number = number
+        self.open_sell_order_number += number
 
     def cancel_open_sell_order_and_update(self, number_canceled):
         self.cash += (self.open_sell_order_number - number_canceled) * self.open_sell_order_price
@@ -166,7 +166,7 @@ def sell_rebalance(context, data):
             # This could be more strategic, but for now, we just sell at the current price to maintain profit
             sell_price = cur_price
 
-        if my_cost <> None and sell_price - 0.01 > my_cost:
+        if my_cost <> None and sell_price <> None and sell_price - 0.01 > my_cost:
             sell_price -= 0.01
 
         if holding.open_sell_order_price <> 0 and holding.open_sell_order_price <> sell_price and sell_price <> None:
