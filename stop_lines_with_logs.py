@@ -378,6 +378,7 @@ def initialize(context):
         symbol('UCO'),
         symbol('SDS'),
         symbol('KGC'),
+        symbol('DBA'),
         symbol('WMCR'),
         symbol('SPY'),
         symbol('CXW'),
@@ -409,7 +410,7 @@ def initialize(context):
     # The interval for each buy, sell, data operations
     # Min value suggested: 3
     context.trading_minutes_interval = 3
-    trading_hours_total = 5
+    trading_hours_total = 6.5
     trading_minutes_total = int((trading_hours_total * 60) - (context.trading_minutes_interval * 2))
     for minutez in xrange(
         context.cool_out_time * 3,
