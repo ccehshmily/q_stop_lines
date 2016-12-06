@@ -127,10 +127,10 @@ def buy_rebalance(context, data):
 
     for sec in context.cur_holdings:
         holding = context.cur_holdings[sec]
-        cur_price = float(data.current([sec], 'price'))
+        cur_price = round(float(data.current([sec], 'price')), 2)
         my_cost = context.MAX_NUMBER
         if sec in context.portfolio.positions:
-            my_cost = float(context.portfolio.positions[sec].cost_basis)
+            my_cost = round(float(context.portfolio.positions[sec].cost_basis), 2)
 
         buy_price = getBuyLineBelowPrice(context, sec, min(cur_price, my_cost))
 
@@ -214,8 +214,9 @@ def calculate_stop_lines(context, data):
             context.stop_lines_down[sec] = {}
 
         for i in range(context.trading_minutes_interval):
-            price_history = price_historys[sec].append([])[i : i - context.trading_minutes_interval]
-            price_mid = round(price_history[mid_place], 2)
+            price_history_i = price_historys[sec].append([])[i : i - context.trading_minutes_interval]
+            price_history = [round(x, 2) for x in price_history_i]
+            price_mid = price_history[mid_place]
             if price_mid == max(price_history):
                 if price_mid not in context.stop_lines_up[sec]:
                     context.stop_lines_up[sec][price_mid] = [0, 0]
