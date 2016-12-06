@@ -104,7 +104,7 @@ def getSellLineAbovePrice(context, sec, price):
     sell_price = None
     if len(context.ordered_up_lines_confidence[sec]) > 0:
         for (price_line, confidence) in context.ordered_up_lines_confidence[sec]:
-            if confidence >= context.confidence_bar_up[sec] and price_line > price:
+            if confidence >= context.confidence_bar_up[sec] and price_line >= price:
                 sell_price = price_line
     return sell_price
 """ END Utilities confirming stop lines with a price. """
