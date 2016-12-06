@@ -166,6 +166,9 @@ def sell_rebalance(context, data):
             # This could be more strategic, but for now, we just sell at the current price to maintain profit
             sell_price = cur_price
 
+        if my_cost <> None and sell_price - 0.01 > my_cost:
+            sell_price -= 0.01
+
         if holding.open_sell_order_price <> 0 and holding.open_sell_order_price <> sell_price and sell_price <> None:
             cancel_open_sell_orders(sec, holding)
         if holding.open_sell_order_number <> 0 and get_open_sell_order_amount(sec, False) == 0:
